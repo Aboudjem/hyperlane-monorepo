@@ -573,12 +573,9 @@ export class WarpMonitor {
     for (const token of warpCore.tokens) {
       const metadata = chainMetadata[token.chainName];
       if (!metadata) continue;
-      if (!ethersUtils.isAddress(token.addressOrDenom)) continue;
 
       const domainId = metadata.domainId;
-      const routerAddress = ethersUtils
-        .getAddress(token.addressOrDenom)
-        .toLowerCase();
+      const routerAddress = this.normalizeNodeAddress(token);
       const key = `${domainId}:${routerAddress}`;
       if (nodeByKey.has(key)) continue;
 
@@ -587,9 +584,7 @@ export class WarpMonitor {
         chainName: token.chainName,
         domainId,
         routerAddress,
-        tokenAddress: (
-          token.collateralAddressOrDenom ?? token.addressOrDenom
-        ).toLowerCase(),
+        tokenAddress: this.normalizeTokenAddress(token),
         tokenName: token.name,
         tokenSymbol: token.symbol,
         tokenDecimals: token.decimals,
@@ -602,7 +597,24 @@ export class WarpMonitor {
   }
 
   private buildNodeId(token: Token): string {
-    return `${token.symbol}|${token.chainName}|${token.addressOrDenom.toLowerCase()}`;
+    return `${token.symbol}|${token.chainName}|${this.normalizeNodeAddress(token)}`;
+  }
+
+  private normalizeNodeAddress(token: Token): string {
+    if (token.protocol === ProtocolType.Ethereum) {
+      return ethersUtils.getAddress(token.addressOrDenom).toLowerCase();
+    }
+
+    return token.addressOrDenom;
+  }
+
+  private normalizeTokenAddress(token: Token): string {
+    const address = token.collateralAddressOrDenom ?? token.addressOrDenom;
+    if (token.protocol === ProtocolType.Ethereum) {
+      return ethersUtils.getAddress(address).toLowerCase();
+    }
+
+    return address;
   }
 
   private formatTokenAmount(token: Token, amount: bigint): number {
