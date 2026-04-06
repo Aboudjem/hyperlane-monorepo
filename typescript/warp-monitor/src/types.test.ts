@@ -78,6 +78,10 @@ describe('Warp Monitor Types', () => {
         explorerApiUrl: 'https://explorer4.hasura.app/v1/graphql',
         explorerQueryLimit: 500,
         inventoryAddress: '0x1234567890123456789012345678901234567890',
+        inventoryAddressesByProtocol: {
+          ethereum: '0x1234567890123456789012345678901234567890',
+          sealevel: 'EK6cs8jNnu2d9pmKTGf1Bvre9oW2xNhcCKNdLKx6t74w',
+        },
       };
 
       expect(config.warpRouteId).to.equal('ETH/ethereum-polygon');
@@ -93,6 +97,12 @@ describe('Warp Monitor Types', () => {
       expect(config.inventoryAddress).to.equal(
         '0x1234567890123456789012345678901234567890',
       );
+      expect(config.inventoryAddressesByProtocol?.ethereum).to.equal(
+        '0x1234567890123456789012345678901234567890',
+      );
+      expect(config.inventoryAddressesByProtocol?.sealevel).to.equal(
+        'EK6cs8jNnu2d9pmKTGf1Bvre9oW2xNhcCKNdLKx6t74w',
+      );
     });
 
     it('should allow optional fields', () => {
@@ -106,6 +116,7 @@ describe('Warp Monitor Types', () => {
       expect(config.explorerApiUrl).to.be.undefined;
       expect(config.explorerQueryLimit).to.be.undefined;
       expect(config.inventoryAddress).to.be.undefined;
+      expect(config.inventoryAddressesByProtocol).to.be.undefined;
     });
   });
 });

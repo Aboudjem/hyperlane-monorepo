@@ -15,7 +15,8 @@
  * - RPC_URL_<CHAIN>: Override RPC URL for a specific chain (e.g., RPC_URL_ETHEREUM, RPC_URL_ARBITRUM)
  * - EXPLORER_API_URL: Hyperlane explorer GraphQL endpoint for pending transfer liabilities (optional)
  * - EXPLORER_QUERY_LIMIT: Max pending transfer rows fetched per cycle (default: 200)
- * - INVENTORY_ADDRESS: Address whose per-node inventory balances should be tracked (optional)
+ * - INVENTORY_ADDRESS: Default address whose per-node inventory balances should be tracked (optional)
+ * - INVENTORY_ADDRESSES_BY_PROTOCOL: JSON object keyed by protocol type (e.g. `{\"ethereum\":\"0x...\",\"sealevel\":\"...\"}`) (optional)
  *
  * Usage:
  *   node dist/service.js
@@ -23,10 +24,61 @@
  */
 import { DEFAULT_GITHUB_REGISTRY } from '@hyperlane-xyz/registry';
 import { getRegistry } from '@hyperlane-xyz/registry/fs';
-import { rootLogger } from '@hyperlane-xyz/utils';
+import { ProtocolType, rootLogger } from '@hyperlane-xyz/utils';
 
 import { WarpMonitor } from './monitor.js';
 import { initializeLogger } from './utils.js';
+
+function parseInventoryAddressesByProtocol():
+  | Partial<Record<`${ProtocolType}`, string>>
+  | undefined {
+  const raw = process.env.INVENTORY_ADDRESSES_BY_PROTOCOL?.trim();
+  if (!raw) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    rootLogger.error(
+      { error, raw },
+      'INVENTORY_ADDRESSES_BY_PROTOCOL must be valid JSON',
+    );
+    process.exit(1);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    rootLogger.error(
+      { raw },
+      'INVENTORY_ADDRESSES_BY_PROTOCOL must be a JSON object',
+    );
+    process.exit(1);
+  }
+
+  const output: Partial<Record<`${ProtocolType}`, string>> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const normalizedKey = key.trim().toLowerCase();
+    if (
+      !Object.values(ProtocolType).includes(normalizedKey as ProtocolType) ||
+      normalizedKey === ProtocolType.Unknown
+    ) {
+      rootLogger.error(
+        { key },
+        'INVENTORY_ADDRESSES_BY_PROTOCOL contains an unsupported protocol key',
+      );
+      process.exit(1);
+    }
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      rootLogger.error(
+        { key, value },
+        'INVENTORY_ADDRESSES_BY_PROTOCOL values must be non-empty strings',
+      );
+      process.exit(1);
+    }
+    output[normalizedKey as `${ProtocolType}`] = value.trim();
+  }
+
+  return Object.keys(output).length > 0 ? output : undefined;
+}
 
 async function main(): Promise<void> {
   const VERSION = process.env.SERVICE_VERSION || 'dev';
@@ -54,6 +106,7 @@ async function main(): Promise<void> {
   const coingeckoApiKey = process.env.COINGECKO_API_KEY;
   const explorerApiUrl = process.env.EXPLORER_API_URL;
   const inventoryAddress = process.env.INVENTORY_ADDRESS;
+  const inventoryAddressesByProtocol = parseInventoryAddressesByProtocol();
 
   let explorerQueryLimit = 200;
   if (process.env.EXPLORER_QUERY_LIMIT) {
@@ -76,6 +129,7 @@ async function main(): Promise<void> {
       explorerApiUrl,
       explorerQueryLimit,
       inventoryAddress,
+      inventoryAddressesByProtocol,
     },
     'Starting Hyperlane Warp Balance Monitor Service',
   );
@@ -101,6 +155,7 @@ async function main(): Promise<void> {
         explorerApiUrl,
         explorerQueryLimit,
         inventoryAddress,
+        inventoryAddressesByProtocol,
       },
       registry,
     );

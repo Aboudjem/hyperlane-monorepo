@@ -23,6 +23,7 @@ import {
 } from '@hyperlane-xyz/sdk';
 import {
   ProtocolType,
+  type ProtocolTypeValue,
   applyRpcUrlOverridesFromEnv,
   objMap,
   objMerge,
@@ -79,6 +80,7 @@ export class WarpMonitor {
       explorerApiUrl,
       explorerQueryLimit,
       inventoryAddress,
+      inventoryAddressesByProtocol,
     } = this.config;
 
     setLoggerBindings({
@@ -135,7 +137,9 @@ export class WarpMonitor {
         chains: warpCore.getTokenChains(),
         crossCollateralNodeCount: routerNodes.length,
         explorerEnabled: !!pendingTransfersClient,
-        inventoryTrackingEnabled: !!inventoryAddress,
+        inventoryTrackingEnabled:
+          !!inventoryAddress ||
+          Object.keys(inventoryAddressesByProtocol ?? {}).length > 0,
       },
       'Starting warp route monitor',
     );
@@ -151,6 +155,7 @@ export class WarpMonitor {
       pendingTransfersClient,
       explorerQueryLimit,
       inventoryAddress,
+      inventoryAddressesByProtocol,
     );
   }
 
@@ -166,6 +171,7 @@ export class WarpMonitor {
     pendingTransfersClient?: ExplorerPendingTransfersClient,
     explorerQueryLimit = 200,
     inventoryAddress?: string,
+    inventoryAddressesByProtocol?: Partial<Record<ProtocolTypeValue, string>>,
   ): Promise<void> {
     const logger = getLogger();
     const tokenPriceGetter = new CoinGeckoTokenPriceGetter({
@@ -218,6 +224,7 @@ export class WarpMonitor {
             pendingTransfersClient,
             explorerQueryLimit,
             inventoryAddress,
+            inventoryAddressesByProtocol,
           );
         },
         'Updating warp route metrics',
@@ -235,6 +242,7 @@ export class WarpMonitor {
     pendingTransfersClient?: ExplorerPendingTransfersClient,
     explorerQueryLimit = 200,
     inventoryAddress?: string,
+    inventoryAddressesByProtocol?: Partial<Record<ProtocolTypeValue, string>>,
   ): Promise<void> {
     const logger = getLogger();
     const now = Date.now();
@@ -351,13 +359,17 @@ export class WarpMonitor {
       );
     }
 
-    if (!inventoryAddress) return;
-
     await Promise.all(
       routerNodes.map(async (node) => {
+        const configuredInventoryAddress =
+          inventoryAddressesByProtocol?.[node.token.protocol] ??
+          inventoryAddress;
+        if (!configuredInventoryAddress) return;
         try {
           const adapter = node.token.getAdapter(warpCore.multiProvider);
-          const inventoryBalance = await adapter.getBalance(inventoryAddress);
+          const inventoryBalance = await adapter.getBalance(
+            configuredInventoryAddress,
+          );
 
           updateInventoryBalanceMetrics({
             warpRouteId,
@@ -367,7 +379,7 @@ export class WarpMonitor {
             tokenAddress: node.tokenAddress,
             tokenSymbol: node.tokenSymbol,
             tokenName: node.tokenName,
-            inventoryAddress,
+            inventoryAddress: configuredInventoryAddress,
             inventoryBalance: this.formatTokenAmount(
               node.token,
               inventoryBalance,
