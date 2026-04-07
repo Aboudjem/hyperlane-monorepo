@@ -377,6 +377,7 @@ cd /path/to/hyperlane-monorepo/typescript/cli
 
 # Send from chain1 → chain2
 pnpm hyperlane warp send \
+  --registry $REGISTRY_PATH \
   --origin <chain1> \
   --destination <chain2> \
   --amount 100000 \
@@ -385,6 +386,7 @@ pnpm hyperlane warp send \
 
 # Send from chain2 → chain1
 pnpm hyperlane warp send \
+  --registry $REGISTRY_PATH \
   --origin <chain2> \
   --destination <chain1> \
   --amount 100000 \

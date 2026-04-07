@@ -11,12 +11,32 @@ You are transferring ownership of a newly deployed warp route and opening the re
 
 The user provides (or you have from a prior `/warp-deploy-init` session):
 
-- **Warp route ID** (e.g. `RISE/bsc-ethereum`)
+- **Linear ticket URL or ID** (e.g. `https://linear.app/hyperlane/issue/ABC-123`)
 - **Registry path** (defaults to `$(dirname $(pwd))/../hyperlane-registry`)
 - **Key env var(s)** used during deployment (e.g. `HYP_KEY`, `HYP_KEY_ETHEREUM`)
-- **Real owner addresses per chain** (from the Linear ticket or from the prior session)
 
 If any of the above are missing, ask the user before proceeding.
+
+### Reading the Linear Ticket
+
+Fetch the Linear ticket to extract:
+
+- Warp route ID (e.g. `RISE/bsc-ethereum`)
+- Chains involved
+- Real owner addresses per chain (if explicitly specified in the ticket)
+- Whether custom warp fee owners are specified (see below)
+
+### Determining Warp Fee Owners
+
+For `tokenFee` blocks in deploy.yaml, the owner defaults to the **Hyperlane ICA address** for each chain from:
+
+```
+typescript/infra/config/environments/mainnet3/governance/ica/warpFees.ts
+```
+
+Read this file to look up the ICA address for each chain in the route. Use these as the fee owners **unless the Linear ticket explicitly specifies different fee owner addresses**.
+
+If a chain is not present in `warpFees.ts`, flag it to the user and ask them to provide the fee owner address manually.
 
 ---
 
@@ -28,18 +48,23 @@ If the deploy used a deployer address, the deployed contracts are currently owne
 
 ### 10a: Confirm Real Owners
 
-Show the user the real owner addresses extracted from the ticket. Present them clearly per chain, e.g.:
+Show the user the real owner addresses for both chain-level owners and fee owners. Present them clearly per chain, e.g.:
 
 ```
-Real owners from ticket:
+Chain owners (from ticket):
   ethereum:  0xSafe...
-  arbitrum:  0xICA... (ICA address — confirm this has been deployed)
-  base:      0xICA...
+  arbitrum:  0xSafe...
+
+Warp fee owners (from warpFees.ts ICA addresses):
+  ethereum:  0x89d295dBB62aAb434BEd1D372b04c468e828eC9b
+  arbitrum:  0x6f0Cfe5fD2E4188AD68b7f8ceB135DD68DF629C7
 ```
+
+If the ticket specifies custom fee owners, show those instead and label them accordingly.
 
 Ask the user:
 
-> **Are these the correct real owner addresses?** Type `yes` to proceed, or provide corrections.
+> **Are these the correct owner addresses?** Type `yes` to proceed, or provide corrections.
 
 Wait for confirmation before proceeding. If the user provides corrections, update your record of owner addresses accordingly.
 
@@ -205,4 +230,5 @@ After showing the PR URL, tell the user:
 
 - The registry path is `$(dirname $(pwd))/../hyperlane-registry` relative to the monorepo root. The hyperlane-registry repo is expected to be cloned at the same level as hyperlane-monorepo.
 - If the ticket has links to token contracts on block explorers, use those addresses
-- `owner` is typically an Abacus Works Safe address specified in the ticket; for non-Ethereum chains managed via ICA, use `<ICA_ADDRESS>` as placeholder
+- Chain-level `owner` is typically an Abacus Works Safe address specified in the ticket
+- `tokenFee` block `owner` defaults to the Hyperlane ICA address from `warpFees.ts` unless the ticket says otherwise
