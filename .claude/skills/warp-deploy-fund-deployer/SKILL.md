@@ -1,5 +1,5 @@
 ---
-name: warp-deploy-preflight
+name: warp-deploy-fund-deployer
 description: Pre-flight gas and balance check before deploying a warp route. Reads a Linear ticket, checks deployer wallet native gas balances per chain (warn if <$10), and checks collateral token balance (need ~$1 for testing).
 ---
 
@@ -358,6 +358,12 @@ Funding arbitrum gas: 0.0053 ETH (~10.94 USD)... ✅ done (tx: 0x...)
 If any command fails, stop and report the error — do not continue with remaining commands.
 
 After all commands complete, re-run the balance checks from Steps 5 and 6 to confirm all chains are now funded.
+
+---
+
+## Next Steps
+
+Once all chains are funded, run `/warp-deploy-init-route` to generate the deploy.yaml and start the deployment.
 
 ---
 

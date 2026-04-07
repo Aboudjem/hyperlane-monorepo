@@ -1,5 +1,5 @@
 ---
-name: add-warp-route-id
+name: warp-deploy-register-route
 description: Post-registry-merge steps for a new warp route deployment. Adds the warp route ID to warpIds.ts, updates .registryrc to latest registry commit, runs update-agent-config, then guides the user through warp monitor deployment and PR creation.
 ---
 
