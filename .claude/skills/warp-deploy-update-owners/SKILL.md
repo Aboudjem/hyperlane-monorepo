@@ -26,6 +26,18 @@ Fetch the Linear ticket to extract:
 - Real owner addresses per chain (if explicitly specified in the ticket)
 - Whether custom warp fee owners are specified (see below)
 
+### Determining Chain-Level Owners
+
+For each chain in the route:
+
+1. If the ticket explicitly specifies an owner address for that chain, use it.
+2. For the ethereum chain, the owner is typically the Abacus Works Ethereum Safe (from the ticket).
+3. For other chains, look up the ICA address in:
+   ```
+   typescript/infra/config/environments/mainnet3/governance/ica/aw.ts
+   ```
+   If the chain's entry is **commented out**, the ICA has not been deployed yet — see Step 10a below for how to deploy it.
+
 ### Determining Warp Fee Owners
 
 For `tokenFee` blocks in deploy.yaml, the owner defaults to the **Hyperlane ICA address** for each chain from:
@@ -34,9 +46,9 @@ For `tokenFee` blocks in deploy.yaml, the owner defaults to the **Hyperlane ICA 
 typescript/infra/config/environments/mainnet3/governance/ica/warpFees.ts
 ```
 
-Read this file to look up the ICA address for each chain in the route. Use these as the fee owners **unless the Linear ticket explicitly specifies different fee owner addresses**.
+Read this file to look up the ICA address for each chain where the tokenFee contracts are deployed. Use these as the fee owners **unless the Linear ticket explicitly specifies different fee owner addresses**.
 
-If a chain is not present in `warpFees.ts`, flag it to the user and ask them to provide the fee owner address manually.
+If a chain's entry is **commented out** in `warpFees.ts`, the ICA has not been deployed yet — see Step 10a below for how to deploy it.
 
 ---
 
@@ -46,18 +58,42 @@ If a chain is not present in `warpFees.ts`, flag it to the user and ask them to 
 
 If the deploy used a deployer address, the deployed contracts are currently owned by the deployer. This step transfers ownership to the real owners from the ticket.
 
-### 10a: Confirm Real Owners
+### 10a: Deploy Missing ICAs (if needed)
+
+**When to deploy ICAs:** Check the ticket for the Ethereum Safe address used as the governance owner. Two scenarios:
+
+1. **Standard AW safe** (e.g. `0x1234...` matching an entry in `aw.ts`): Only deploy ICAs for chains that are commented out in `aw.ts`/`warpFees.ts`.
+2. **Custom/route-specific safe** (a safe not in `aw.ts`, or the ticket says "ICA on all chains"): Deploy fresh ICAs from this safe for **every non-ethereum chain** in the route, regardless of what exists in `aw.ts`. The existing entries in `aw.ts` are from different safes and do not apply.
+
+For each chain needing an ICA, deploy from `typescript/infra`:
+
+```bash
+cd typescript/infra
+
+pnpm tsx scripts/keys/get-owner-ica.ts \
+  --environment mainnet3 \
+  --ownerChain ethereum \
+  --owner <ETHEREUM_SAFE_ADDRESS> \
+  --chains <chain1>,<chain2>,... \
+  --deploy
+```
+
+You can pass multiple chains as a comma-separated list or run in parallel (one chain per command). Each command prints the new ICA address on completion. Collect all new addresses before proceeding.
+
+**These new ICAs are route-specific and should NOT be added to `aw.ts` or `warpFees.ts`** — they only belong in the deploy.yaml for this route.
+
+### 10b: Confirm Real Owners
 
 Show the user the real owner addresses for both chain-level owners and fee owners. Present them clearly per chain, e.g.:
 
 ```
-Chain owners (from ticket):
-  ethereum:  0xSafe...
-  arbitrum:  0xSafe...
+Chain owners:
+  ethereum:  0xSafe...   (from ticket)
+  arbitrum:  0xICA...    (from aw.ts or newly deployed)
 
-Warp fee owners (from warpFees.ts ICA addresses):
-  ethereum:  0x89d295dBB62aAb434BEd1D372b04c468e828eC9b
-  arbitrum:  0x6f0Cfe5fD2E4188AD68b7f8ceB135DD68DF629C7
+Warp fee owners:
+  ethereum:  0x89d295dBB62aAb434BEd1D372b04c468e828eC9b  (from warpFees.ts)
+  arbitrum:  0x6f0Cfe5fD2E4188AD68b7f8ceB135DD68DF629C7  (from warpFees.ts)
 ```
 
 If the ticket specifies custom fee owners, show those instead and label them accordingly.
@@ -207,6 +243,28 @@ Adds the `<TOKEN>/<chain1>-<chain2>` warp route.
 | <chain> | <HypNative / HypSynthetic / HypERC20Collateral / ...> | `<address>` |
 | ... | ... | ... |
 
+### ICAs deployed
+
+Only include this section if fresh ICAs were deployed during Step 10a. List each chain and address:
+
+| Chain | ICA Address | Owner Safe |
+| ----- | ----------- | ---------- |
+| <chain> | `<ica-address>` | `<safe-address>` |
+| ... | ... | ... |
+
+If no ICAs were deployed (all owners were already known), omit this section entirely.
+
+### Test transfers
+
+Only include this section if warp send tests were run (Step 9 in warp-deploy-init-route). List each direction tested with its explorer link:
+
+| From | To | Message ID | Status |
+| ---- | -- | ---------- | ------ |
+| <chain> | <chain> | [`<short-id>`](<explorer-link>) | ✅ |
+| ... | ... | ... | ... |
+
+If no test transfers were run, omit this section entirely.
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
@@ -217,6 +275,8 @@ Fill in the PR body with real values from the deployment:
 - Route type: describe the chain types (e.g. "igra (native) → ethereum (synthetic)")
 - Contracts: list each deployed contract address from the config.yaml `addressOrDenom` fields
 - Owners: list per-chain real owner addresses from the final deploy.yaml
+- ICAs: list any ICAs deployed in Step 10a (omit section if none)
+- Test transfers: list message IDs and explorer links from Step 9 (omit section if none)
 
 Show the user the PR URL when done.
 

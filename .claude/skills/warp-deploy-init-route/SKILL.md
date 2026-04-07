@@ -359,40 +359,58 @@ cd /path/to/hyperlane-monorepo/typescript/cli && pnpm hyperlane warp deploy \
 
 ---
 
-## Step 9: Warp Send Test (deployer mode, two-chain routes only)
+## Step 9: Warp Send Test (deployer mode only)
 
-**Skip this step if:** the route has more than 2 chains, or the deploy did NOT use a deployer address as owner.
+**Skip this step if:** the deploy did NOT use a deployer address as owner.
 
 Run the send test **now, while the deployer still owns the contracts** — before transferring ownership in Step 10.
 
-Ask:
+Use the same key environment variable from Step 7c (no need to ask again).
 
-> **What environment variable holds your private key for sending test transactions?**
-> (This is the actual private key value, not an address — e.g. `MY_PK`)
+### Two-chain routes
 
-Then send a test transfer in **each direction** — chain A → chain B, then chain B → chain A. Run each send sequentially (wait for the first to complete before the second). Use `--amount 100000` (adjustable by user):
+Send in each direction — chain A → chain B, then chain B → chain A. Run sequentially. Use `--amount 100000` (adjustable by user):
 
 ```bash
 cd /path/to/hyperlane-monorepo/typescript/cli
 
-# Send from chain1 → chain2
 pnpm hyperlane warp send \
   --registry $REGISTRY_PATH \
-  --origin <chain1> \
-  --destination <chain2> \
-  --amount 100000 \
-  --key $MY_PK \
+  --origin <chain1> --destination <chain2> \
+  --amount 100000 --key $MY_PK \
   -w <TOKEN>/<chain1>-<chain2>
 
-# Send from chain2 → chain1
 pnpm hyperlane warp send \
   --registry $REGISTRY_PATH \
-  --origin <chain2> \
-  --destination <chain1> \
-  --amount 100000 \
-  --key $MY_PK \
+  --origin <chain2> --destination <chain1> \
+  --amount 100000 --key $MY_PK \
   -w <TOKEN>/<chain1>-<chain2>
 ```
+
+### Multi-collateral routes (3+ chains with a synthetic)
+
+Do NOT use `--round-trip` — it requires collateral on every chain for the return leg and doesn't clearly test the critical paths.
+
+Instead, test each collateral ↔ synthetic pair sequentially. Run each send and wait for it to complete before the next:
+
+```bash
+cd /path/to/hyperlane-monorepo/typescript/cli
+
+# For each collateral chain, send collateral → synthetic, then synthetic → collateral
+pnpm hyperlane warp send \
+  --registry $REGISTRY_PATH \
+  --origin <collateral-chain> --destination <synthetic-chain> \
+  --amount 100000 --key $MY_PK \
+  -w <TOKEN>/...
+
+pnpm hyperlane warp send \
+  --registry $REGISTRY_PATH \
+  --origin <synthetic-chain> --destination <collateral-chain> \
+  --amount 100000 --key $MY_PK \
+  -w <TOKEN>/...
+```
+
+Note: after sending collateral → synthetic, the deployer holds synthetic tokens. Use a smaller amount on the return leg if a fee is charged (fee comes out of balance). Skip any collateral chain that has insufficient collateral token balance.
 
 Each send may take a few minutes to relay. After each send, show the user:
 
