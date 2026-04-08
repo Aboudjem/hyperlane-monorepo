@@ -22,7 +22,19 @@ If a deployer address is provided, use it as the `owner` for **all chains** in t
 - Do NOT use `<ICA_ADDRESS>` placeholders — deployer address applies everywhere
 - Tell the user clearly that this config uses the deployer address as temporary owner
 
-If no deployer address is provided, ask: **"Do you want to use a temporary deployer address for all owners, or use the real owners from the ticket?"** If they choose deployer, ask for the address. If they choose real owners, proceed normally (with `<ICA_ADDRESS>` placeholders where ICAs are unknown).
+**Multi-protocol deployer addresses**: if the route spans multiple VM protocols (e.g. EVM + Sealevel), each protocol requires its own deployer address with a different format (EVM: `0x...`, Solana: base58). In this case, ask for a separate deployer address per protocol and use:
+
+- The **EVM deployer address** as `owner` on all EVM chains
+- The **Sealevel deployer address** as `owner` on all Sealevel chains (Solana, Eclipse)
+- The **Cosmos deployer address** as `owner` on all Cosmos chains (if applicable)
+
+If no deployer address is provided, ask: **"Do you want to use a temporary deployer address for all owners, or use the real owners from the ticket?"** If they choose deployer:
+
+- Check whether the route spans multiple VM protocols (see Step 7b for protocol list)
+- If single protocol: ask for one deployer address
+- If multiple protocols: ask for a separate deployer address per protocol (e.g. "What is your EVM deployer address?" and "What is your Sealevel deployer address?")
+
+If they choose real owners, proceed normally (with `<ICA_ADDRESS>` placeholders where ICAs are unknown).
 
 ---
 
