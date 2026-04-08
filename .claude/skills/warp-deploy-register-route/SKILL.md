@@ -9,9 +9,30 @@ You are completing the post-registry-merge steps for a new warp route deployment
 
 ## Input
 
-The user provides a warp route ID in the format `TOKEN/chain1-chain2` (e.g. `RISE/bsc-ethereum`).
+The user provides a warp route ID in the format `TOKEN/chain1-chain2` (e.g. `RISE/bsc-ethereum`), or a Linear ticket URL.
+
+If a Linear ticket URL is provided, fetch the ticket to extract the warp route ID and route details. Look for fields like "Route Type", "Connected Chains", and notes about ownership/ICA.
 
 If no warp route ID was provided, ask the user for it now.
+
+---
+
+## Detecting Route Type: Simple vs. Multi-Collateral
+
+Before proceeding, classify the route:
+
+**Simple route** — one or two chains, no rebalancing, no ICA ownership:
+
+- Proceed with Steps 1–6 as written below.
+- Skip Step 2b entirely.
+
+**Multi-collateral route with rebalancing** — multiple collateral chains + one synthetic, CCTP rebalancing bridges, ICA-based ownership:
+
+- Identifiers: 3+ chains, or Linear ticket says "ICA on all chains", or registry config has `allowedRebalancers`/`allowedRebalancingBridges`.
+- Must complete Step 2b (configGetter) in addition to Steps 1–6.
+- **Skip Step 5 (warp monitor deploy)** — multi-collateral warp monitors are deployed after client handoff. Notify the user of this.
+
+---
 
 ---
 
@@ -54,6 +75,120 @@ Example addition for `RISE/bsc-ethereum`:
 ```
 
 After editing, show the user the added line and confirm the file looks correct.
+
+---
+
+## Step 2b: ConfigGetter (Multi-Collateral Routes Only)
+
+**Skip this step for simple routes.**
+
+Multi-collateral routes with ICA ownership and CCTP rebalancing require a configGetter in addition to the warpIds.ts entry. This enables `warp apply` and ownership management.
+
+### Files to create/modify:
+
+**1. Uncomment warpFees ICA entry (if commented out)**
+
+File: `typescript/infra/config/environments/mainnet3/governance/ica/warpFees.ts`
+
+Check if the synthetic chain is commented out in the warpFees ICA map. If so, uncomment it. The warpFees ICA address is the fee owner for the synthetic token's routing fee contract.
+
+Example — for `USDC/igra`, uncomment:
+
+```typescript
+igra: '0x42cb788529463B1F41de9E3cd3d2906930aCd32F',
+```
+
+**2. Create the configGetter**
+
+File: `typescript/infra/config/environments/mainnet3/warp/configGetters/get<SyntheticChain><TOKEN>WarpConfig.ts`
+
+Follow the pattern from `getElectroneumUSDCWarpConfig.ts` (simplest multi-collateral example) or `getEclipseUSDCWarpConfig.ts` (advanced with fees + proxy admins).
+
+Key structure:
+
+- `ownersByChain`: hardcode from the deploy YAML's `owner` fields (these are ICA/Safe addresses already set during deployment)
+- `collateralChains`: all non-synthetic chains
+- `rebalancingConfigByChain`: call `getUSDCRebalancingBridgesConfigFor(collateralChains, [WarpRouteIds.MainnetCCTPV2Standard, WarpRouteIds.MainnetCCTPV2Fast])`
+- Each collateral chain: `getRebalancingUSDCConfigForChain(chain, routerConfig, ownersByChain, rebalancingConfigByChain)`
+- Synthetic chain: `getSyntheticTokenConfigForChain(...)` + add `tokenFee: getFixedRoutingFeeConfig(getWarpFeeOwner(syntheticChain), collateralChains, bps)` if the deploy YAML shows a `tokenFee`
+
+Also export `get<Name>StrategyConfig` for ICA-based `warp apply`:
+
+- `ORIGIN_CHAIN = 'ethereum'`
+- `safeAddress` = `ownersByChain.ethereum` (the ethereum Safe that controls all ICAs)
+- All non-ethereum chains get `TxSubmitterType.INTERCHAIN_ACCOUNT` submitters routing through the ethereum Safe
+
+```typescript
+export const get<Name>StrategyConfig = (): ChainSubmissionStrategy => {
+  const safeAddress = ownersByChain[ORIGIN_CHAIN];
+  const originSafeSubmitter = { type: TxSubmitterType.GNOSIS_SAFE, chain: ORIGIN_CHAIN, safeAddress };
+  const chainAddress = getChainAddresses();
+  const originInterchainAccountRouter = chainAddress[ORIGIN_CHAIN].interchainAccountRouter;
+  assert(originInterchainAccountRouter, ...);
+  const icaChains = [...collateralChains, syntheticChain].filter(c => c !== ORIGIN_CHAIN);
+  const icaStrategies = icaChains.map(chain => [chain, { submitter: {
+    type: TxSubmitterType.INTERCHAIN_ACCOUNT, chain: ORIGIN_CHAIN, destinationChain: chain,
+    owner: safeAddress, originInterchainAccountRouter, internalSubmitter: originSafeSubmitter,
+  }}]);
+  return Object.fromEntries([[ORIGIN_CHAIN, { submitter: originSafeSubmitter }], ...icaStrategies]);
+};
+```
+
+**3. Register in config/warp.ts**
+
+File: `typescript/infra/config/warp.ts`
+
+Add the import and register in both maps:
+
+```typescript
+import { get<Name>StrategyConfig, get<Name>WarpConfig } from './environments/mainnet3/warp/configGetters/get<Name>WarpConfig.js';
+
+// in warpConfigGetterMap:
+[WarpRouteIds.<EnumKey>]: get<Name>WarpConfig,
+
+// in strategyConfigGetterMap:
+[WarpRouteIds.<EnumKey>]: get<Name>StrategyConfig,
+```
+
+After writing, run `pnpm -C typescript/infra tsc --noEmit --skipLibCheck` to verify no type errors.
+
+**4. Create rebalancer config**
+
+File: `typescript/infra/config/environments/mainnet3/rebalancer/<TOKEN>/<label>-config.yaml`
+
+Where `<label>` is the part of the warp route ID after the `/` (e.g. `USDC/igra` → `igra-config.yaml`).
+
+Use the **weighted** strategy for most routes. Weights come from the Linear ticket notes (e.g. "35% ethereum, 20% arb, ..."). Bridge addresses are the **CCTP V2 Standard** bridge contracts per chain — find these in the `allowedRebalancingBridges` field of the deploy YAML (first bridge listed per destination pair).
+
+```yaml
+warpRouteId: TOKEN/label
+
+strategy:
+  rebalanceStrategy: weighted
+  chains:
+    ethereum:
+      weighted:
+        weight: 35 # from Linear ticket weights
+        tolerance: 5
+      bridgeLockTime: 1800 # 30 mins for CCTP
+      bridgeMinAcceptedAmount: 1000
+      bridge: '0x...' # CCTP V2 Standard bridge on this chain
+
+    arbitrum:
+      weighted:
+        weight: 20
+        tolerance: 5
+      bridgeLockTime: 1800
+      bridgeMinAcceptedAmount: 1000
+      bridge: '0x...'
+    # ... repeat for all collateral chains
+```
+
+Common CCTP V2 Standard bridge addresses (verify against deploy YAML):
+
+- `ethereum`: `0x8c8D831E1e879604b4B304a2c951B8AEe3aB3a23`
+- `arbitrum`: `0x4c19c653a8419A475d9B6735511cB81C15b8d9b2`
+- `base`, `optimism`, `polygon`, `avalanche`: `0x33e94B6D2ae697c16a750dB7c3d9443622C4405a`
 
 ---
 
@@ -125,6 +260,8 @@ This script regenerates agent configuration files based on the updated registry.
 
 ## Step 5: Deploy Warp Monitor
 
+> ⚠️ **Multi-collateral routes**: Skip this step. Warp monitor deployment for multi-collateral routes must be done after client handoff. Notify the user and proceed directly to Step 6.
+
 Run directly from the `typescript/infra` directory (requires helm and kubectl). Pass `--registry-commit` and `--yes` to run non-interactively:
 
 ```bash
@@ -172,6 +309,13 @@ Tell the user:
 > - `typescript/infra/config/environments/mainnet3/warp/warpIds.ts` — new enum entry
 > - `.registryrc` — updated registry commit hash
 > - Any files modified by `update-agent-config` (agent config JSONs)
+>
+> **Multi-collateral routes also include:**
+>
+> - `typescript/infra/config/environments/mainnet3/governance/ica/warpFees.ts` — uncommented synthetic chain entry
+> - `typescript/infra/config/environments/mainnet3/warp/configGetters/get<Name>WarpConfig.ts` — new configGetter
+> - `typescript/infra/config/warp.ts` — new import + map entries
+> - `typescript/infra/config/environments/mainnet3/rebalancer/<TOKEN>/<label>-config.yaml` — rebalancer config
 >
 > Please create a PR for these changes. Suggested branch name: `<your-name>/add-warp-route-<token>-<chains>` (e.g. `troy/add-warp-route-rise-bsc-ethereum`).
 >
