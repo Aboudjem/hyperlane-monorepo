@@ -1,5 +1,27 @@
 # @hyperlane-xyz/sdk
 
+## 30.2.0
+
+### Minor Changes
+
+- 44626fb: Enabled SVM cross-collateral token deployments in the CLI. Added `crossCollateral` to supported Alt-VM token types, allowing `warp deploy`, `warp combine`, and `warp apply` to work with SVM CC routes. Extracted `computeCrossCollateralRouterUpdates` into provider-sdk for cross-protocol reuse. Fixed CC-only gas preservation for domains transitioning from remote routers.
+
+### Patch Changes
+
+- 4963b32: Fix HypERC20Checker validation for EVM cross-collateral routes.
+- fc0a1cf: Fixed tx overrides in token deploys
+- Updated dependencies [44626fb]
+- Updated dependencies [7ad1f9e]
+  - @hyperlane-xyz/provider-sdk@4.3.0
+  - @hyperlane-xyz/core@11.3.1
+  - @hyperlane-xyz/deploy-sdk@4.3.0
+  - @hyperlane-xyz/aleo-sdk@30.2.0
+  - @hyperlane-xyz/cosmos-sdk@30.2.0
+  - @hyperlane-xyz/radix-sdk@30.2.0
+  - @hyperlane-xyz/tron-sdk@22.1.10
+  - @hyperlane-xyz/starknet-core@30.2.0
+  - @hyperlane-xyz/utils@30.2.0
+
 ## 30.1.1
 
 ### Patch Changes
